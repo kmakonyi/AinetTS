@@ -21,7 +21,7 @@ def _load_dataframe(path: str) -> pd.DataFrame:
 
 
 def _save_dataframe(path: str, df: pd.DataFrame) -> None:
-    df.reset_index().to_feather(path)
+    df.reset_index().to_feather(path, compression='zstd', compression_level=9)
 
 
 def run_query(query: str, cache: bool = True, *, verbose: bool = False) -> pd.DataFrame:
