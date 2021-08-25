@@ -42,8 +42,22 @@ def build_query(select: str, from_: str, where: str = None, groupby: str | tuple
         if isinstance(groupby, str):
             query.append(groupby)
         elif isinstance(groupby, (list, tuple)):
+            # Is there a fill value?
+            fill_value = [g for g in groupby if g.startswith('fill(')]
+            if fill_value:
+                if len(fill_value) > 1:
+                    raise ValueError('Encountered multiple fill values:', ' '.join(fill_value))
+                fill_value = fill_value[0]
+
+                groupby = list(groupby)
+                groupby.remove(fill_value)
+
             # We need to wrap the tags but not the time with quotes
-            query.append(','.join(gr if 'time(' in gr else f'"{gr}"' for gr in groupby))
+            # Sort them alphabetically for consistency
+            query.append(','.join(sorted(gr if 'time(' in gr else f'"{gr}"' for gr in groupby)))
+            if fill_value:
+                query.append(fill_value)
+
         else:
             raise ValueError('Unknown type of groupby:', groupby)
 
@@ -75,4 +89,3 @@ class Datetime(datetime.datetime):
         seconds_str = f'{int(seconds):02d}.' + str(seconds % 1).split('.')[1]
 
         return f"'{self.year}-{self.month:02d}-{self.day:02d} {self.hour:02d}:{self.minute:02d}:{seconds_str}'"
-

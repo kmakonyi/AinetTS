@@ -1,11 +1,37 @@
+import os
+import hashlib
+
 import influxdb
 
 import pandas as pd
 
+from . import config
+
 client = influxdb.InfluxDBClient(database='frenymlab')
 
 
-def run_query(query: str, *, verbose: bool = False) -> pd.DataFrame:
+def _hash_query(query: str) -> str:
+    return hashlib.md5(query.encode()).hexdigest()
+
+
+def _load_dataframe(path: str) -> pd.DataFrame:
+    df = pd.read_feather(path)
+    df.set_index('time', inplace=True)
+    return df
+
+
+def _save_dataframe(path: str, df: pd.DataFrame) -> None:
+    df.reset_index().to_feather(path)
+
+
+def run_query(query: str, cache: bool = True, *, verbose: bool = False) -> pd.DataFrame:
+    if cache:
+        outf = os.path.join(config.CACHE_DIR, _hash_query(query) + '_plain.feather')
+        if os.path.exists(outf):
+            if verbose:
+                print('Loading from cache')
+            return _load_dataframe(outf)
+
     data = []
 
     if verbose:
@@ -32,10 +58,24 @@ def run_query(query: str, *, verbose: bool = False) -> pd.DataFrame:
         print('Parsing time')
     data['time'] = pd.to_datetime(data.time).dt.tz_convert(None)
     data.set_index('time', inplace=True)
+    if data.database.nunique() == 1:
+        data.drop(columns='database', inplace=True)
+    data.sort_index(inplace=True)
+
+    if cache:
+        _save_dataframe(outf, data)
     return data
 
 
-def run_multivariate_query(query: str, separator: str = '__', *, verbose: bool = False) -> pd.DataFrame:
+def run_multivariate_query(query: str, separator: str = '__', cache: bool = True, *,
+                           verbose: bool = False) -> pd.DataFrame:
+    if cache:
+        outf = os.path.join(config.CACHE_DIR, _hash_query(query) + '_multivariate.feather')
+        if os.path.exists(outf):
+            if verbose:
+                print('Loading from cache')
+            return _load_dataframe(outf)
+
     data = []
 
     if verbose:
@@ -70,6 +110,11 @@ def run_multivariate_query(query: str, separator: str = '__', *, verbose: bool =
     if verbose:
         print('Merging')
     data = data[0].join(data[1:], how='outer')
+
+    data.sort_index(inplace=True)
     if not many_db:
         data['database'] = database
+
+    if cache:
+        _save_dataframe(outf, data)
     return data
